@@ -33,19 +33,20 @@ pipeline {
                     }
                 }
 
-                stage('Trivy Scan') {
-                    steps {
-                        echo '🔒 Running Trivy security scan...'
-                        dir('javaapp-pipeline') {
-                            sh '''
-                                echo "Starting Trivy filesystem scan..."
-                                wget -q https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -O html.tpl
-                                trivy fs --format template --template "@html.tpl" -o trivy-report.html .
-                                echo "Trivy scan completed. Report: trivy-report.html"
-                            '''
-                        }
-                    }
-                }
+              stage('Trivy Scan') {
+    steps {
+        echo '🔒 Running Trivy security scan...'
+        dir('javaapp-pipeline') {
+            sh '''
+                echo "Starting Trivy filesystem scan..."
+                wget -q https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -O html.tpl
+                trivy fs --format template --template "@html.tpl" -o trivy-report.html .
+                echo "Trivy scan completed. Report: trivy-report.html"
+            '''
+        }
+    }
+}
+
             }
         }
 
