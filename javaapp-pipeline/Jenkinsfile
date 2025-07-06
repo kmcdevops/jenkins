@@ -12,7 +12,7 @@ pipeline {
   stages {
     stage('Checkout') {
       steps {
-        git 'https://github.com/YOUR-REPO-HERE'
+        git 'https://github.com/kmcdevops/jenkins.git
       }
     }
 
