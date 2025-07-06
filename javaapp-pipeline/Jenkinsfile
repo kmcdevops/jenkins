@@ -2,17 +2,17 @@ pipeline {
   agent any
 
   tools {
-    maven 'Maven 3.8'         // if using Maven
+    maven 'Maven 3.8'
   }
 
   environment {
-    SCANNER_HOME = tool 'SonarScanner' // matches name from tool config
+    SCANNER_HOME = tool 'SonarScanner'
   }
 
   stages {
     stage('Checkout') {
       steps {
-        git 'https://github.com/kmcdevops/jenkins.git
+        git 'https://github.com/kmcdevops/jenkins.git'
       }
     }
 
