@@ -2,7 +2,7 @@ pipeline {
   agent any
 
   environment {
-    SCANNER_HOME = '/opt/sonar-scanner'  // ✅ Using direct path instead of Jenkins tool()
+    SCANNER_HOME = '/opt/sonar-scanner 2.1'  // ✅ Using direct path instead of Jenkins tool()
   }
 
   stages {
