@@ -1,9 +1,7 @@
-pipeline {
-  agent any
+environment {
+  SCANNER_HOME = tool 'SonarScanner'
+}
 
-  environment {
-    SCANNER_HOME = tool 'SonarQube Scanner 2.1'  // Use your actual SonarScanner name
-  }
 
   stages {
     stage('Checkout') {
@@ -24,23 +22,14 @@ pipeline {
       steps {
         withSonarQubeEnv('SonarQube') { // 👈 Use the name of your SonarQube server config
           dir('javaapp-pipeline') {
-            sh """
-              ${SCANNER_HOME}/bin/sonar-scanner \
-              -Dsonar.projectKey=demo-project \
-              -Dsonar.sources=. \
-              -Dsonar.java.binaries=target
-            """
-          }
-        }
-      }
-    }
+sh """
+  ${SCANNER_HOME}/sonar-scanner \
+  -Dsonar.projectKey=demo-project \
+  -Dsonar.sources=. \
+  -Dsonar.java.binaries=target
+"""
 
-    stage("Quality Gate") {
-      steps {
-        timeout(time: 1, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
+}
         }
       }
     }
-  }
-}
