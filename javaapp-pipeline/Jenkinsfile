@@ -1,63 +1,41 @@
 pipeline {
- agent {label 'agent'}
- stages {
- stage('Checkout') {
- steps {
- git url: 'https://github.com/artisantek/jenkins.git'
- }
- }
- stage('Unit Tests') {
- steps {
- dir('javaapp-pipeline') {
- sh 'mvn clean test'
- }
- }
- }
- stage('Trivy Scan') {
- steps {
- dir('javaapp-pipeline') {
- sh '''
- wget -q https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -O 
-html.tpl
- trivy fs --format template --template "@html.tpl" -o report.html .
- '''
- }
- }
- }
- stage('Sonar Analysis') {
- steps {
- dir('javaapp-pipeline') {
- withSonarQubeEnv('sonar') {
- sh '''
- mvn verify sonar:sonar \
- -Dsonar.projectKey=java-app \
- -Dsonar.projectName=java-app 
- '''
- }
- }
- }
- }
- stage('Build') {
- steps {
- dir('javaapp-pipeline') {
- sh 'mvn clean package'
- }
- }
- }
- stage('Deploy') {
- steps {
- dir('javaapp-pipeline/target') {
- sh '''
- if pgrep -f "java -jar java-sample-21-1.0.0.jar" > /dev/null; then
- pkill -f "java -jar java-sample-21-1.0.0.jar"
- echo "App was running and has been killed."
- else
- echo "App is not running."
- fi
- JENKINS_NODE_COOKIE=dontKillMe nohup java -jar java-sample-21-1.0.0.jar > app.log 2>&1 &
- '''
- }
- }
- }
- }
+  agent any
+
+  tools {
+    maven 'Maven 3.8'         // if using Maven
+  }
+
+  environment {
+    SCANNER_HOME = tool 'SonarScanner' // matches name from tool config
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        git 'https://github.com/YOUR-REPO-HERE'
+      }
+    }
+
+    stage('Build') {
+      steps {
+        sh 'mvn clean install'
+      }
+    }
+
+    stage('SonarQube Scan') {
+      steps {
+        withSonarQubeEnv('SonarQube') {
+          sh "${SCANNER_HOME}/bin/sonar-scanner -Dsonar.projectKey=demo-project -Dsonar.sources=. -Dsonar.java.binaries=target"
+        }
+      }
+    }
+
+    stage("Quality Gate") {
+      steps {
+        timeout(time: 1, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+  }
 }
