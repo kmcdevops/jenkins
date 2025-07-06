@@ -1,9 +1,9 @@
 pipeline {
   agent any
 
-  environment {
-    SCANNER_HOME = tool 'SonarScanner 2.1'
-  }
+ environment {
+  SCANNER_HOME = '/opt/sonar-scanner'
+}
 
   stages {
     stage('Checkout') {
@@ -21,7 +21,7 @@ pipeline {
     stage('SonarQube Scan') {
       steps {
         withSonarQubeEnv('SonarQube') {
-          sh "${SCANNER_HOME}/bin/sonar-scanner -Dsonar.projectKey=demo-project -Dsonar.sources=. -Dsonar.java.binaries=target"
+          sh '$SCANNER_HOME/bin/sonar-scanner --version'
         }
       }
     }
