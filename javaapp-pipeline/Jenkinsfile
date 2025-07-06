@@ -1,7 +1,9 @@
-environment {
-  SCANNER_HOME = tool 'SonarScanner'
-}
+pipeline {
+  agent any
 
+  environment {
+    SCANNER_HOME = '/opt/sonar-scanner'  // ✅ Using direct path instead of Jenkins tool()
+  }
 
   stages {
     stage('Checkout') {
@@ -12,7 +14,7 @@ environment {
 
     stage('Build') {
       steps {
-        dir('javaapp-pipeline') { // 👈 this is where pom.xml is
+        dir('javaapp-pipeline') {
           sh 'mvn clean install'
         }
       }
@@ -20,16 +22,25 @@ environment {
 
     stage('SonarQube Scan') {
       steps {
-        withSonarQubeEnv('SonarQube') { // 👈 Use the name of your SonarQube server config
+        withSonarQubeEnv('SonarQube') {
           dir('javaapp-pipeline') {
-sh """
-  ${SCANNER_HOME}/sonar-scanner \
-  -Dsonar.projectKey=demo-project \
-  -Dsonar.sources=. \
-  -Dsonar.java.binaries=target
-"""
-
-}
+            sh '''
+              $SCANNER_HOME/bin/sonar-scanner \
+              -Dsonar.projectKey=demo-project \
+              -Dsonar.sources=. \
+              -Dsonar.java.binaries=target
+            '''
+          }
         }
       }
     }
+
+    stage("Quality Gate") {
+      steps {
+        timeout(time: 1, unit: 'MINUTES') {
+          waitForQualityGate abortPipeline: true
+        }
+      }
+    }
+  }
+}
