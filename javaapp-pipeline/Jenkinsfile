@@ -1,9 +1,9 @@
 pipeline {
   agent any
 
- environment {
-  SCANNER_HOME = '/opt/sonar-scanner'
-}
+  environment {
+    SCANNER_HOME = tool 'SonarScanner'  // Use your actual SonarScanner name
+  }
 
   stages {
     stage('Checkout') {
@@ -14,14 +14,23 @@ pipeline {
 
     stage('Build') {
       steps {
-        sh 'mvn clean install'
+        dir('javaapp-pipeline') { // 👈 this is where pom.xml is
+          sh 'mvn clean install'
+        }
       }
     }
 
     stage('SonarQube Scan') {
       steps {
-        withSonarQubeEnv('SonarQube') {
-          sh '$SCANNER_HOME/bin/sonar-scanner --version'
+        withSonarQubeEnv('SonarQube') { // 👈 Use the name of your SonarQube server config
+          dir('javaapp-pipeline') {
+            sh """
+              ${SCANNER_HOME}/bin/sonar-scanner \
+              -Dsonar.projectKey=demo-project \
+              -Dsonar.sources=. \
+              -Dsonar.java.binaries=target
+            """
+          }
         }
       }
     }
