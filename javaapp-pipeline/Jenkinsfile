@@ -16,10 +16,10 @@ pipeline {
         }
 
         stage('Checkout') {
-            steps {
-                git branch: "master", url: "https://github.com/kmcdevops/multibranch-repo.git"
-            }
-        }
+    steps {
+        checkout scm   // reuses the repo Jenkins already pulled
+    }
+}
 
         stage('Build & Test') {
             steps {
