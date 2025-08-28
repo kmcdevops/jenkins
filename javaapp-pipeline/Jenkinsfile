@@ -1,46 +1,58 @@
 pipeline {
-  agent any
+    agent any
 
-  environment {
-    SCANNER_HOME = '/opt/sonar-scanner 2.1'  // ✅ Using direct path instead of Jenkins tool()
-  }
-
-  stages {
-    stage('Checkout') {
-      steps {
-        git 'https://github.com/kmcdevops/jenkins.git'
-      }
+    environment {
+        DOCKER_IMAGE = "java-sample-app:1.0"
+        CONTAINER_NAME = "java-sample-container"
+        APP_PORT = "5000"
+        HOST_PORT = "9090"
     }
 
-    stage('Build') {
-      steps {
-        dir('javaapp-pipeline') {
-          sh 'mvn clean install'
+    stages {
+        stage('Cleanup Workspace') {
+            steps {
+                deleteDir()
+            }
         }
-      }
+
+        stage('Checkout') {
+            steps {
+                git branch: "master", url: "https://github.com/kmcdevops/multibranch-repo.git"
+            }
+        }
+
+        stage('Build & Test') {
+            steps {
+                dir('javaapp-pipeline') {
+                    sh 'mvn clean package'
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                dir('javaapp-pipeline') {
+                    sh "docker build -t ${DOCKER_IMAGE} ."
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                sh "docker stop ${CONTAINER_NAME} || true"
+                sh "docker rm ${CONTAINER_NAME} || true"
+                sh "docker run -d --name ${CONTAINER_NAME} -p ${HOST_PORT}:${APP_PORT} ${DOCKER_IMAGE}"
+            }
+        }
     }
 
-    stage('SonarQube Scan') {
-      steps {
-        withSonarQubeEnv('SonarQube') {
-          dir('javaapp-pipeline') {
-            sh '''
-              $SCANNER_HOME/bin/sonar-scanner \
-              -Dsonar.projectKey=demo-project \
-              -Dsonar.sources=. \
-              -Dsonar.java.binaries=target
-            '''
-          }
+    post {
+        success {
+            echo "✅ Pipeline executed successfully! App is running at http://<EC2_PUBLIC_IP>:${HOST_PORT}/"
         }
-      }
-    }
-
-    stage("Quality Gate") {
-      steps {
-        timeout(time: 1, unit: 'MINUTES') {
-          waitForQualityGate abortPipeline: true
+        failure {
+            echo "❌ Pipeline failed. Check the logs."
         }
-      }
     }
-  }
 }
+
