@@ -9,30 +9,38 @@ pipeline {
     }
 
     triggers {
-        // Enable webhook trigger instead of PollSCM
+        // Enable webhook trigger from GitHub (instead of PollSCM)
         githubPush()
     }
 
     stages {
         stage('Cleanup Workspace') {
-            steps { deleteDir() }
+            steps {
+                echo "🧹 Cleaning up workspace..."
+                deleteDir()
+            }
         }
 
         stage('Checkout') {
-            steps { checkout scm }
+            steps {
+                echo "📥 Checking out source code..."
+                checkout scm
+            }
         }
 
         stage('Build & Test') {
             steps {
+                echo "🔨 Running Maven build & tests..."
                 sh 'mvn clean package'
             }
         }
 
         stage('Docker Build & Deploy') {
             when {
-                not { changeRequest() }   // <-- Skip deploy for PR builds
+                not { changeRequest() }   // <-- Skip deploy if it's a Pull Request
             }
             steps {
+                echo "🐳 Building Docker image and deploying container..."
                 sh 'docker build -t ${DOCKER_IMAGE} .'
                 sh 'docker stop ${CONTAINER_NAME} || true'
                 sh 'docker rm ${CONTAINER_NAME} || true'
@@ -52,7 +60,8 @@ pipeline {
             }
         }
         failure {
-            echo "❌ Pipeline failed. Check logs."
+            echo "❌ Pipeline failed. Check logs for details."
         }
     }
 }
+
