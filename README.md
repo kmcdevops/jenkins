@@ -62,3 +62,4 @@ cp target/artisantek-app.war $TOMCAT_HOME/webapps/
 # Hello Chandu
 #WELCOME
 #new
+#GITHUB WEBHOOK AUTO TEST
