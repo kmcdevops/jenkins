@@ -2,66 +2,57 @@ pipeline {
     agent any
 
     environment {
-        DOCKER_IMAGE   = "java-sample-app:1.0"
-        CONTAINER_NAME = "java-sample-container"
-        APP_PORT       = "5000"
-        HOST_PORT      = "9090"
-    }
-
-    triggers {
-        // Enable webhook trigger from GitHub (instead of PollSCM)
-        githubPush()
+        DOCKER_IMAGE = 'java-sample-app:1.0'
+        CONTAINER_NAME = 'java-sample-container'
+        APP_PORT = '5000'
+        HOST_PORT = '9090'
     }
 
     stages {
         stage('Cleanup Workspace') {
             steps {
-                echo "🧹 Cleaning up workspace..."
+                echo 'Cleaning workspace...'
                 deleteDir()
             }
         }
 
         stage('Checkout') {
             steps {
-                echo "📥 Checking out source code..."
+                echo 'Checking out code from GitHub...'
                 checkout scm
             }
         }
 
         stage('Build & Test') {
             steps {
-                echo "🔨 Running Maven build & tests..."
+                echo 'Building and testing Java application...'
                 sh 'mvn clean package'
             }
         }
 
-        stage('Docker Build & Deploy') {
-            when {
-                not { changeRequest() }   // <-- Skip deploy if it's a Pull Request
-            }
+        stage('Build Docker Image') {
             steps {
-                echo "🐳 Building Docker image and deploying container..."
-                sh 'docker build -t ${DOCKER_IMAGE} .'
-                sh 'docker stop ${CONTAINER_NAME} || true'
-                sh 'docker rm ${CONTAINER_NAME} || true'
-                sh 'docker run -d --name ${CONTAINER_NAME} -p ${HOST_PORT}:${APP_PORT} ${DOCKER_IMAGE}'
+                echo "Building Docker image ${DOCKER_IMAGE}..."
+                sh "docker build -t ${DOCKER_IMAGE} ."
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                echo "Deploying Docker container ${CONTAINER_NAME}..."
+                sh "docker stop ${CONTAINER_NAME} || true"
+                sh "docker rm ${CONTAINER_NAME} || true"
+                sh "docker run -d --name ${CONTAINER_NAME} -p ${HOST_PORT}:${APP_PORT} ${DOCKER_IMAGE}"
             }
         }
     }
 
     post {
         success {
-            script {
-                if (env.CHANGE_ID) {
-                    echo "✅ PR Build Successful for PR #${env.CHANGE_ID}"
-                } else {
-                    echo "✅ Branch Build & Deploy Successful!"
-                }
-            }
+            echo 'Pipeline completed successfully!'
         }
         failure {
-            echo "❌ Pipeline failed. Check logs for details."
+            echo 'Pipeline failed. Please check the logs.'
         }
     }
 }
-
