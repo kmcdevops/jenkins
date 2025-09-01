@@ -1,81 +1,115 @@
 pipeline {
-  agent any
+    agent { label 'agent' }
 
-  environment {
-    APP_NAME       = 'java-sample-app'
-    IMAGE_TAG      = "${env.BUILD_NUMBER}"
-    DOCKER_IMAGE   = "${APP_NAME}:${IMAGE_TAG}"
-    CONTAINER_NAME = 'java-sample-container'
-    APP_PORT       = '5000'
-    HOST_PORT      = '9090'
-
-    AWS_ACCOUNT_ID = '<YOUR_AWS_ACCOUNT_ID>'
-    AWS_REGION     = 'ap-south-1'
-    ECR_REPO       = 'java-sample-repo'
-    ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-  }
-
-  stages {
-    stage('Checkout') {
-      steps { checkout scm }
+    environment {
+        DOCKER_IMAGE = 'java-sample-app:1.0'
+        CONTAINER_NAME = 'java-sample-container'
+        APP_PORT = '5000'
+        HOST_PORT = '9090'
     }
 
-    stage('Build & Test') {
-      steps {
-        dir('javaapp-pipeline') {
-          sh 'mvn -B clean package'
+    stages {
+        stage('Checkout') {
+            steps {
+                git url: 'https://github.com/kmcdevops/jenkins.git'
+            }
         }
-      }
-    }
 
-    stage('Code Scan (Simulated)') {
-      steps {
-        sh 'echo "Simulating static code analysis (SonarQube alternative)"'
-      }
-    }
+        stage('Tests & Security Scans') {
+            parallel {
+                stage('Unit Tests') {
+                    steps {
+                        dir('javaapp-pipeline') {
+                            sh 'mvn clean test'
+                        }
+                    }
+                }
 
-    stage('Build Docker Image') {
-      when { not { changeRequest() } }
-      steps {
-        dir('javaapp-pipeline') {
-          sh "docker build -t ${DOCKER_IMAGE} ."
+                stage('Trivy Scan') {
+                    steps {
+                        dir('javaapp-pipeline') {
+                            sh '''
+                                wget -q https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl -O html.tpl
+                                trivy fs --format template --template "@html.tpl" -o trivy-report.html .
+                            '''
+                        }
+                    }
+                }
+
+                stage('SonarQube Analysis') {
+                    steps {
+                        dir('javaapp-pipeline') {
+                            withSonarQubeEnv('sonar') {
+                                sh '''
+                                    mvn clean verify sonar:sonar \
+                                    -Dsonar.projectKey=java-app \
+                                    -Dsonar.projectName=java-app
+                                '''
+                            }
+                        }
+                    }
+                }
+            }
         }
-      }
-    }
 
-    stage('Scan Image (Trivy)') {
-      when { not { changeRequest() } }
-      steps {
-        sh "trivy image --no-progress --severity HIGH,CRITICAL ${DOCKER_IMAGE} || true"
-      }
-    }
-
-    stage('Push to ECR') {
-      when { not { changeRequest() } }
-      steps {
-        withCredentials([usernamePassword(credentialsId: 'aws-ecr', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
-          sh '''
-            export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
-            export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
-            export AWS_DEFAULT_REGION=${AWS_REGION}
-
-            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
-
-            docker tag ${DOCKER_IMAGE} ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
-            docker push ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
-          '''
+        stage('Build') {
+            steps {
+                dir('javaapp-pipeline') {
+                    sh 'mvn clean package'
+                }
+            }
         }
-      }
+
+        stage('Publish to Artifactory') {
+            steps {
+                script {
+                    def GROUP_ID = sh(script: "mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout -f javaapp-pipeline/pom.xml", returnStdout: true).trim()
+                    def ARTIFACT_ID = sh(script: "mvn help:evaluate -Dexpression=project.artifactId -q -DforceStdout -f javaapp-pipeline/pom.xml", returnStdout: true).trim()
+                    def VERSION = sh(script: "mvn help:evaluate -Dexpression=project.version -q -DforceStdout -f javaapp-pipeline/pom.xml", returnStdout: true).trim()
+                    def GROUP_PATH = sh(script: "echo '${GROUP_ID}' | tr '.' '/'", returnStdout: true).trim()
+                    def TARGET_PATH = "maven/${GROUP_PATH}/${ARTIFACT_ID}/${VERSION}/"
+                    def JAR_PATH = "${ARTIFACT_ID}-${VERSION}.jar"
+                    
+                    dir('javaapp-pipeline/target') {
+                        rtUpload(
+                            serverId: 'jfrog',
+                            spec: """{
+                                "files": [
+                                    {
+                                        "pattern": "${JAR_PATH}",
+                                        "target": "${TARGET_PATH}"
+                                    }
+                                ]
+                            }"""
+                        )
+                    }
+                }
+            }
+        }
+
+        stage('Deploy') {
+            steps {
+                dir('javaapp-pipeline/target') {
+                    sh '''
+                        if pgrep -f "java -jar java-sample-21-1.0.0.jar" > /dev/null; then
+                            pkill -f "java -jar java-sample-21-1.0.0.jar"
+                            echo "App was running and has been killed."
+                        else
+                            echo "App is not running."
+                        fi
+                        JENKINS_NODE_COOKIE=dontKillMe nohup java -jar java-sample-21-1.0.0.jar > app.log 2>&1 &
+                    '''
+                }
+            }
+        }
     }
 
-    stage('Deploy') {
-      when { not { changeRequest() } }
-      steps {
-        sh '''
-          docker rm -f ${CONTAINER_NAME} || true
-          docker run -d --name ${CONTAINER_NAME} -p ${HOST_PORT}:${APP_PORT} ${DOCKER_IMAGE}
-        '''
-      }
+    post {
+        always {
+            cleanWs()
+        }
+        failure {
+            emailext attachLog: true, body: 'Pipeline Failed, Please check the logs', subject: 'Job Failed', to: 'artisantek.adithya@gmail.com'
+        }
     }
-  }
 }
