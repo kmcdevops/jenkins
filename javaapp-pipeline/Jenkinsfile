@@ -1,5 +1,5 @@
 pipeline {
-    agent {label 'agent'}
+    agent { label 'docker-agent' } // Use an agent with Docker installed
 
     stages {
         stage('Checkout') {
@@ -30,20 +30,6 @@ pipeline {
             }
         }
 
-        // stage('Sonar Analysis') {
-        //     steps {
-        //         dir('javaapp-pipeline') {
-        //             withSonarQubeEnv('sonar') {
-        //                 sh '''
-        //                     mvn clean verify sonar:sonar \
-        //                     -Dsonar.projectKey=java-app \
-        //                     -Dsonar.projectName=java-app 
-        //                 '''
-        //             }
-        //         }
-        //     }
-        // }
-
         stage('Build') {
             steps {
                 dir('javaapp-pipeline') {
@@ -52,7 +38,15 @@ pipeline {
             }
         }
 
-        stage('Publish') {
+        stage('Build Docker Image') {
+            steps {
+                dir('javaapp-pipeline') {
+                    sh 'docker build -t java-sample-app:1.0 .'
+                }
+            }
+        }
+
+        stage('Publish to Artifactory') {
             steps {
                 script {
                     def GROUP_ID = sh(script: "mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout -f javaapp-pipeline/pom.xml", returnStdout: true).trim()
@@ -61,7 +55,7 @@ pipeline {
                     def GROUP_PATH = sh(script: "echo '${GROUP_ID}' | tr '.' '/'", returnStdout: true).trim()
                     def TARGET_PATH = "maven/${GROUP_PATH}/${ARTIFACT_ID}/${VERSION}/"
                     def JAR_PATH = "${ARTIFACT_ID}-${VERSION}.jar"
-        
+
                     dir('javaapp-pipeline/target') {
                         rtUpload(
                             serverId: 'jfrog',
@@ -94,17 +88,14 @@ pipeline {
                 }
             }
         }
-
     }
-    
+
     post {
-      always {
-        cleanWs()
-      }
-      failure {
-        emailext attachLog: true, body: 'Pipeline Failed, Please check the logs', subject: 'Job Failed', to: 'artisantek.adithya@gmail.com'
-      }
+        always {
+            cleanWs()
+        }
+        failure {
+            emailext attachLog: true, body: 'Pipeline Failed, Please check the logs', subject: 'Job Failed', to: 'artisantek.adithya@gmail.com'
+        }
     }
-
-
 }
