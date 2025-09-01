@@ -18,6 +18,11 @@ pipeline {
         stage('Tests & Security Scans') {
             parallel {
                 stage('Unit Tests') {
+                    agent {
+                        docker {
+                            image 'maven:3.9.2-jdk-21'
+                        }
+                    }
                     steps {
                         dir('javaapp-pipeline') {
                             sh 'mvn clean test'
@@ -37,6 +42,11 @@ pipeline {
                 }
 
                 stage('SonarQube Analysis') {
+                    agent {
+                        docker {
+                            image 'maven:3.9.2-jdk-21'
+                        }
+                    }
                     steps {
                         dir('javaapp-pipeline') {
                             withSonarQubeEnv('sonar') {
@@ -53,6 +63,11 @@ pipeline {
         }
 
         stage('Build') {
+            agent {
+                docker {
+                    image 'maven:3.9.2-jdk-21'
+                }
+            }
             steps {
                 dir('javaapp-pipeline') {
                     sh 'mvn clean package'
@@ -61,6 +76,11 @@ pipeline {
         }
 
         stage('Publish to Artifactory') {
+            agent {
+                docker {
+                    image 'maven:3.9.2-jdk-21'
+                }
+            }
             steps {
                 script {
                     def GROUP_ID = sh(script: "mvn help:evaluate -Dexpression=project.groupId -q -DforceStdout -f javaapp-pipeline/pom.xml", returnStdout: true).trim()
