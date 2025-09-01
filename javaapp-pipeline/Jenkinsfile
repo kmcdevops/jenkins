@@ -1,82 +1,81 @@
 pipeline {
-    agent any
+  agent any
 
-    environment {
-        DOCKER_IMAGE   = 'java-sample-app:1.0'
-        CONTAINER_NAME = 'java-sample-container'
-        APP_PORT       = '5000'
-        HOST_PORT      = '9090'
-        AWS_ACCOUNT_ID = '<your-aws-account-id>'
-        AWS_REGION     = 'ap-south-1'
-        ECR_REPO       = 'java-sample-repo'
+  environment {
+    APP_NAME       = 'java-sample-app'
+    IMAGE_TAG      = "${env.BUILD_NUMBER}"
+    DOCKER_IMAGE   = "${APP_NAME}:${IMAGE_TAG}"
+    CONTAINER_NAME = 'java-sample-container'
+    APP_PORT       = '5000'
+    HOST_PORT      = '9090'
+
+    AWS_ACCOUNT_ID = '<YOUR_AWS_ACCOUNT_ID>'
+    AWS_REGION     = 'ap-south-1'
+    ECR_REPO       = 'java-sample-repo'
+    ECR_REGISTRY   = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+  }
+
+  stages {
+    stage('Checkout') {
+      steps { checkout scm }
     }
 
-    stages {
-        stage('Checkout') {
-            steps {
-                echo '📥 Checking out code...'
-                checkout scm
-            }
+    stage('Build & Test') {
+      steps {
+        dir('javaapp-pipeline') {
+          sh 'mvn -B clean package'
         }
-
-        stage('Build & Test') {
-            steps {
-                dir('javaapp-pipeline') {
-                    echo '🔨 Building & testing...'
-                    sh 'mvn clean package'
-                }
-            }
-        }
-
-        stage('Code Scan (SonarQube simulation)') {
-            steps {
-                echo '🔍 Running static code analysis...'
-                // If sonar-scanner CLI installed
-                sh 'echo "Simulating SonarQube scan..."'
-            }
-        }
-
-        stage('Build Docker Image') {
-            steps {
-                dir('javaapp-pipeline') {
-                    echo "🐳 Building Docker image..."
-                    sh "docker build -t ${DOCKER_IMAGE} ."
-                }
-            }
-        }
-
-        stage('Scan Docker Image (Trivy)') {
-            steps {
-                echo '🔎 Scanning Docker image with Trivy...'
-                sh "trivy image --severity HIGH,CRITICAL ${DOCKER_IMAGE} || true"
-            }
-        }
-
-        stage('Push to ECR') {
-            steps {
-                echo '📦 Pushing image to AWS ECR...'
-                sh """
-                  aws ecr get-login-password --region ${AWS_REGION} \
-                  | docker login --username AWS --password-stdin ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
-                  
-                  docker tag ${DOCKER_IMAGE} ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
-                  docker push ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/${ECR_REPO}:latest
-                """
-            }
-        }
-
-        stage('Deploy to Docker') {
-            steps {
-                echo "🚀 Deploying container locally..."
-                sh "docker stop ${CONTAINER_NAME} || true"
-                sh "docker rm ${CONTAINER_NAME} || true"
-                sh "docker run -d --name ${CONTAINER_NAME} -p ${HOST_PORT}:${APP_PORT} ${DOCKER_IMAGE}"
-            }
-        }
+      }
     }
 
-    post {
-        success { echo '✅ Pipeline completed successfully!' }
-        failure { echo '❌ Pipeline failed. Please check logs.' }
+    stage('Code Scan (Simulated)') {
+      steps {
+        sh 'echo "Simulating static code analysis (SonarQube alternative)"'
+      }
     }
+
+    stage('Build Docker Image') {
+      when { not { changeRequest() } }
+      steps {
+        dir('javaapp-pipeline') {
+          sh "docker build -t ${DOCKER_IMAGE} ."
+        }
+      }
+    }
+
+    stage('Scan Image (Trivy)') {
+      when { not { changeRequest() } }
+      steps {
+        sh "trivy image --no-progress --severity HIGH,CRITICAL ${DOCKER_IMAGE} || true"
+      }
+    }
+
+    stage('Push to ECR') {
+      when { not { changeRequest() } }
+      steps {
+        withCredentials([usernamePassword(credentialsId: 'aws-ecr', usernameVariable: 'AWS_ACCESS_KEY_ID', passwordVariable: 'AWS_SECRET_ACCESS_KEY')]) {
+          sh '''
+            export AWS_ACCESS_KEY_ID=$AWS_ACCESS_KEY_ID
+            export AWS_SECRET_ACCESS_KEY=$AWS_SECRET_ACCESS_KEY
+            export AWS_DEFAULT_REGION=${AWS_REGION}
+
+            aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
+
+            docker tag ${DOCKER_IMAGE} ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
+            docker push ${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}
+          '''
+        }
+      }
+    }
+
+    stage('Deploy') {
+      when { not { changeRequest() } }
+      steps {
+        sh '''
+          docker rm -f ${CONTAINER_NAME} || true
+          docker run -d --name ${CONTAINER_NAME} -p ${HOST_PORT}:${APP_PORT} ${DOCKER_IMAGE}
+        '''
+      }
+    }
+  }
 }
